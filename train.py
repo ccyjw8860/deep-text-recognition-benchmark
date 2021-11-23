@@ -89,12 +89,7 @@ def train(opt):
 
     """ setup loss """
     if 'CTC' in opt.Prediction:
-        if opt.baiduCTC:
-            # need to install warpctc. see our guideline.
-            from warpctc_pytorch import CTCLoss 
-            criterion = CTCLoss()
-        else:
-            criterion = torch.nn.CTCLoss(zero_infinity=True).to(device)
+        criterion = torch.nn.CTCLoss(zero_infinity=True).to(device)
     else:
         criterion = torch.nn.CrossEntropyLoss(ignore_index=0).to(device)  # ignore [GO] token = ignore index 0
     # loss averager
@@ -232,7 +227,7 @@ if __name__ == '__main__':
     parser.add_argument('--train_data', required=True, help='path to training dataset')
     parser.add_argument('--valid_data', required=True, help='path to validation dataset')
     parser.add_argument('--manualSeed', type=int, default=1111, help='for random seed setting')
-    parser.add_argument('--workers', type=int, help='number of data loading workers', default=4)
+    parser.add_argument('--workers', type=int, help='number of data loading workers', default=0)
     parser.add_argument('--batch_size', type=int, default=192, help='input batch size')
     parser.add_argument('--num_iter', type=int, default=300000, help='number of iterations to train for')
     parser.add_argument('--valInterval', type=int, default=2000, help='Interval between each validation')

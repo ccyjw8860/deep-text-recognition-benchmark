@@ -127,7 +127,6 @@ def hierarchical_dataset(root, opt, select_data='/'):
 
 
 class LmdbDataset(Dataset):
-
     def __init__(self, root, opt):
 
         self.root = root

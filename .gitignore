@@ -206,3 +206,9 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+
+#whl file
+whl
+
+#Pipfile.lock
+Pipfile.lock
