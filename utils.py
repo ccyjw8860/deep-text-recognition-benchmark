@@ -1,6 +1,6 @@
 import torch
+import json
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
 
 class CTCLabelConverter(object):
     """ Convert between text-label and text-index """
@@ -15,6 +15,54 @@ class CTCLabelConverter(object):
             self.dict[char] = i + 1
 
         self.character = ['[CTCblank]'] + dict_character  # dummy '[CTCblank]' token for CTCLoss (index 0)
+
+    def encode(self, text, batch_max_length=25):
+        """convert text-label into text-index.
+        input:
+            text: text labels of each image. [batch_size]
+            batch_max_length: max length of text label in the batch. 25 by default
+
+        output:
+            text: text index for CTCLoss. [batch_size, batch_max_length]
+            length: length of each text. [batch_size]
+        """
+        length = [len(s) for s in text]
+
+        # The index used for padding (=0) would not affect the CTC loss calculation.
+        batch_text = torch.LongTensor(len(text), batch_max_length).fill_(0)
+        for i, t in enumerate(text):
+            text = list(t)
+            text = [self.dict[char] for char in text]
+            batch_text[i][:len(text)] = torch.LongTensor(text)
+        return (batch_text.to(device), torch.IntTensor(length).to(device))
+
+    def decode(self, text_index, length):
+        """ convert text-index into text-label. """
+        texts = []
+        for index, l in enumerate(length):
+            t = text_index[index, :]
+
+            char_list = []
+            for i in range(l):
+                if t[i] != 0 and (not (i > 0 and t[i - 1] == t[i])):  # removing repeated characters and blank.
+                    char_list.append(self.character[t[i]])
+            text = ''.join(char_list)
+
+            texts.append(text)
+        return texts
+
+class HangulLabelconverter(object):
+    def __init__(self, json_path):
+        en_num_spch = '0123456789abcdefghijklmnopqrstuvwxyz~!@#$%^&*()-_=+[]{};/.,<>`'
+        en_num_spch = [char for char in en_num_spch]
+        with open(json_path, 'r', encoding='utf-8') as json_file:
+            c_dict = json.load(json_file)
+        characters = list(c_dict.values()) + en_num_spch
+
+        # NOTE: 0 is reserved for 'CTCblank' token required by CTCLoss
+        idxs = list(range(1, len(characters)+1))
+        self.dict = dict(zip(characters, idxs))
+        self.character = ['[CTCblank]'] + characters # dummy '[CTCblank]' token for CTCLoss (index 0)
 
     def encode(self, text, batch_max_length=25):
         """convert text-label into text-index.

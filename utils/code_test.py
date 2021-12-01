@@ -7,12 +7,12 @@ import os
 from PIL import Image, ImageDraw
 import numpy as np
 import re
-import json
-import albumentations as A
 import cv2
 from zipfile import ZipFile
 from io import BytesIO
 import imageio
+import json
+import albumentations as A
 
 # json_path = 'D:/data/load_data/test/labels/00110011001.json'
 # img_path = 'D:/data/load_data/test/imgs/00110011001.jpg'
@@ -36,19 +36,11 @@ class OCRDataset(Dataset):
                                     A.Blur(p=0.1),
                                     A.Normalize(mean=[0,0,0], std=[1,1,1], max_pixel_value=255),
                                     A.ChannelShuffle(p=0.05)
-                                ], bbox_params=A.BboxParams(format='yolo',  min_visibility=0.0001, label_fields=['class_labels']))
+                                ], bbox_params=A.BboxParams(format='pascal_voc',  min_visibility=0.0001, label_fields=['class_labels']))
         self.is_train = is_train
 
     def float_to_int(self, float_bbox):
         return list(map(lambda x: int(round(x)), float_bbox))
-
-    def voc_to_yolo(self, bbox, height, width):
-        xmin, ymin, xmax, ymax = bbox
-        bwidth = xmax - xmin
-        bheight = ymax - ymin
-        xcenter = (bwidth/2) + xmin
-        ycenter = (bheight/2) + ymin
-        return (xcenter/width, ycenter/height, bwidth/width, bheight/height)
 
     def __len__(self):
         return len(self.ann_list)
@@ -62,8 +54,7 @@ class OCRDataset(Dataset):
         h, w, _ = img.shape
         ann = self.ANN_ZIP_FILE.open(ann_path)
         ann = json.load(ann)
-        bboxes = ann['text']['word']
-        bboxes = list(map(lambda x: self.voc_to_yolo(x['wordbox'], height=h, width=w), bboxes))
+        bboxes = list(map(lambda x: self.float_to_int(x['wordbox']), ann['text']['word']))
 
         class_labels = ['word']*len(bboxes)
 

@@ -12,10 +12,11 @@ import torch.optim as optim
 import torch.utils.data
 import numpy as np
 
-from utils import CTCLabelConverter, CTCLabelConverterForBaiduWarpctc, AttnLabelConverter, Averager, HangulLabelconverter
-from dataset import hierarchical_dataset_2, AlignCollate, Batch_Balanced_Dataset_2
+from utils import CTCLabelConverter, CTCLabelConverterForBaiduWarpctc, AttnLabelConverter, Averager
+from dataset import hierarchical_dataset, AlignCollate, Batch_Balanced_Dataset
 from model import Model
 from test import validation
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
@@ -26,12 +27,13 @@ def train(opt):
         print('Filtering the images whose label is longer than opt.batch_max_length')
         # see https://github.com/clovaai/deep-text-recognition-benchmark/blob/6593928855fb7abb999a99f428b3e4477d4ae356/dataset.py#L130
 
-    train_dataset, _ = hierarchical_dataset_2(opt.train_data)
+    opt.select_data = opt.select_data.split('-')
+    opt.batch_ratio = opt.batch_ratio.split('-')
+    train_dataset = Batch_Balanced_Dataset(opt)
 
     log = open(f'./saved_models/{opt.exp_name}/log_dataset.txt', 'a')
-
     AlignCollate_valid = AlignCollate(imgH=opt.imgH, imgW=opt.imgW, keep_ratio_with_pad=opt.PAD)
-    valid_dataset, valid_dataset_log = hierarchical_dataset_2(root=opt.valid_data, is_train=False)
+    valid_dataset, valid_dataset_log = hierarchical_dataset(root=opt.valid_data, opt=opt)
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset, batch_size=opt.batch_size,
         shuffle=True,  # 'True' to check training progress with validation function.
@@ -41,16 +43,15 @@ def train(opt):
     print('-' * 80)
     log.write('-' * 80 + '\n')
     log.close()
-    
+
     """ model configuration """
-    # if 'CTC' in opt.Prediction:
-    #     if opt.baiduCTC:
-    #         converter = CTCLabelConverterForBaiduWarpctc(opt.character)
-    #     else:
-    #         converter = CTCLabelConverter(opt.character)
-    # else:
-    #     converter = AttnLabelConverter(opt.character)
-    converter = HangulLabelconverter(opt.char_dict_path)
+    if 'CTC' in opt.Prediction:
+        if opt.baiduCTC:
+            converter = CTCLabelConverterForBaiduWarpctc(opt.character)
+        else:
+            converter = CTCLabelConverter(opt.character)
+    else:
+        converter = AttnLabelConverter(opt.character)
     opt.num_class = len(converter.character)
 
     if opt.rgb:
@@ -89,7 +90,12 @@ def train(opt):
 
     """ setup loss """
     if 'CTC' in opt.Prediction:
-        criterion = torch.nn.CTCLoss(zero_infinity=True).to(device)
+        if opt.baiduCTC:
+            # need to install warpctc. see our guideline.
+            from warpctc_pytorch import CTCLoss
+            criterion = CTCLoss()
+        else:
+            criterion = torch.nn.CTCLoss(zero_infinity=True).to(device)
     else:
         criterion = torch.nn.CrossEntropyLoss(ignore_index=0).to(device)  # ignore [GO] token = ignore index 0
     # loss averager
@@ -113,6 +119,7 @@ def train(opt):
     print(optimizer)
 
     """ final options """
+    # print(opt)
     with open(f'./saved_models/{opt.exp_name}/opt.txt', 'a') as opt_file:
         opt_log = '------------ Options -------------\n'
         args = vars(opt)
@@ -136,7 +143,7 @@ def train(opt):
     best_norm_ED = -1
     iteration = start_iter
 
-    while(True):
+    while (True):
         # train part
         image_tensors, labels = train_dataset.get_batch()
         image = image_tensors.to(device)
@@ -166,7 +173,8 @@ def train(opt):
         loss_avg.add(cost)
 
         # validation part
-        if (iteration + 1) % opt.valInterval == 0 or iteration == 0: # To see training progress, we also conduct validation when 'iteration == 0' 
+        if (
+                iteration + 1) % opt.valInterval == 0 or iteration == 0:  # To see training progress, we also conduct validation when 'iteration == 0'
             elapsed_time = time.time() - start_time
             # for log
             with open(f'./saved_models/{opt.exp_name}/log_train.txt', 'a') as log:
@@ -177,7 +185,7 @@ def train(opt):
                 model.train()
 
                 # training loss and validation loss
-                loss_log = f'[{iteration+1}/{opt.num_iter}] Train loss: {loss_avg.val():0.5f}, Valid loss: {valid_loss:0.5f}, Elapsed_time: {elapsed_time:0.5f}'
+                loss_log = f'[{iteration + 1}/{opt.num_iter}] Train loss: {loss_avg.val():0.5f}, Valid loss: {valid_loss:0.5f}, Elapsed_time: {elapsed_time:0.5f}'
                 loss_avg.reset()
 
                 current_model_log = f'{"Current_accuracy":17s}: {current_accuracy:0.3f}, {"Current_norm_ED":17s}: {current_norm_ED:0.2f}'
@@ -212,7 +220,7 @@ def train(opt):
         # save model per 1e+5 iter.
         if (iteration + 1) % 1e+5 == 0:
             torch.save(
-                model.state_dict(), f'./saved_models/{opt.exp_name}/iter_{iteration+1}.pth')
+                model.state_dict(), f'./saved_models/{opt.exp_name}/iter_{iteration + 1}.pth')
 
         if (iteration + 1) == opt.num_iter:
             print('end the training')
@@ -223,13 +231,13 @@ def train(opt):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--exp_name', help='Where to store logs and models')
-    parser.add_argument('--train_data',help='path to training dataset', default="D:/data/OCR_DATASET/train.zip")
-    parser.add_argument('--valid_data',help='path to validation dataset', default="D:/data/OCR_DATASET/test.zip")
+    parser.add_argument('--train_data', required=True, help='path to training dataset', default="D:/data/data_lmdb_release/training")
+    parser.add_argument('--valid_data', required=True, help='path to validation dataset', default="D:/data/data_lmdb_release/validation")
     parser.add_argument('--manualSeed', type=int, default=1111, help='for random seed setting')
-    parser.add_argument('--workers', type=int, help='number of data loading workers', default=0)
+    parser.add_argument('--workers', type=int, help='number of data loading workers', default=4)
     parser.add_argument('--batch_size', type=int, default=192, help='input batch size')
     parser.add_argument('--num_iter', type=int, default=300000, help='number of iterations to train for')
-    parser.add_argument('--valInterval', type=int, default=10, help='Interval between each validation')
+    parser.add_argument('--valInterval', type=int, default=2000, help='Interval between each validation')
     parser.add_argument('--saved_model', default='', help="path to model to continue training")
     parser.add_argument('--FT', action='store_true', help='whether to do fine-tuning')
     parser.add_argument('--adam', action='store_true', help='Whether to use adam (default is Adadelta)')
@@ -240,27 +248,33 @@ if __name__ == '__main__':
     parser.add_argument('--grad_clip', type=float, default=5, help='gradient clipping value. default=5')
     parser.add_argument('--baiduCTC', action='store_true', help='for data_filtering_off mode')
     """ Data processing """
+    parser.add_argument('--select_data', type=str, default='MJ-ST',
+                        help='select training data (default is MJ-ST, which means MJ and ST used as training data)')
+    parser.add_argument('--batch_ratio', type=str, default='0.5-0.5',
+                        help='assign ratio for each selected data in the batch')
     parser.add_argument('--total_data_usage_ratio', type=str, default='1.0',
                         help='total data usage ratio, this ratio is multiplied to total number of data.')
     parser.add_argument('--batch_max_length', type=int, default=25, help='maximum-label-length')
     parser.add_argument('--imgH', type=int, default=32, help='the height of the input image')
     parser.add_argument('--imgW', type=int, default=100, help='the width of the input image')
     parser.add_argument('--rgb', action='store_true', help='use rgb input')
+    parser.add_argument('--character', type=str,
+                        default='0123456789abcdefghijklmnopqrstuvwxyz', help='character label')
     parser.add_argument('--sensitive', action='store_true', help='for sensitive character mode')
     parser.add_argument('--PAD', action='store_true', help='whether to keep ratio then pad for image resize')
     parser.add_argument('--data_filtering_off', action='store_true', help='for data_filtering_off mode')
     """ Model Architecture """
-    parser.add_argument('--Transformation', type=str, help='Transformation stage. None|TPS', default='TPS')
-    parser.add_argument('--FeatureExtraction', type=str, help='FeatureExtraction stage. VGG|RCNN|ResNet', default='ResNet')
-    parser.add_argument('--SequenceModeling', type=str, help='SequenceModeling stage. None|BiLSTM', default='BiLSTM')
-    parser.add_argument('--Prediction', type=str, help='Prediction stage. CTC|Attn|Hangul', default='Hangul')
+    parser.add_argument('--Transformation', type=str, required=True, help='Transformation stage. None|TPS')
+    parser.add_argument('--FeatureExtraction', type=str, required=True,
+                        help='FeatureExtraction stage. VGG|RCNN|ResNet')
+    parser.add_argument('--SequenceModeling', type=str, required=True, help='SequenceModeling stage. None|BiLSTM')
+    parser.add_argument('--Prediction', type=str, required=True, help='Prediction stage. CTC|Attn')
     parser.add_argument('--num_fiducial', type=int, default=20, help='number of fiducial points of TPS-STN')
     parser.add_argument('--input_channel', type=int, default=1,
                         help='the number of input channel of Feature extractor')
     parser.add_argument('--output_channel', type=int, default=512,
                         help='the number of output channel of Feature extractor')
     parser.add_argument('--hidden_size', type=int, default=256, help='the size of the LSTM hidden state')
-    parser.add_argument('--char_dict_path', type=str, default='./text_json/index_to_syllable.json', help="Hangul character json path")
 
     opt = parser.parse_args()
 

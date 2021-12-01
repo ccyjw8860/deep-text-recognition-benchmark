@@ -60,7 +60,7 @@ class Model(nn.Module):
             self.SequenceModeling_output = self.FeatureExtraction_output
 
         """ Prediction """
-        if opt.Prediction == 'CTC':
+        if opt.Prediction == 'CTC' or opt.Prediction == 'Hangul':
             self.Prediction = nn.Linear(self.SequenceModeling_output, opt.num_class)
         elif opt.Prediction == 'Attn':
             self.Prediction = Attention(self.SequenceModeling_output, opt.hidden_size, opt.num_class)
