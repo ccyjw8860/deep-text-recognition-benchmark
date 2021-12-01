@@ -348,6 +348,7 @@ class OCRDataset(Dataset):
         img = img.read()
         img = imageio.imread(BytesIO(img))
         img = Image.fromarray(img)
+        img = img.convert('L')
 
         return (img, label)
 

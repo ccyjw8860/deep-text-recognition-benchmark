@@ -97,7 +97,7 @@ def validation(model, criterion, evaluation_loader, converter, opt):
         text_for_loss, length_for_loss = converter.encode(labels, batch_max_length=opt.batch_max_length)
 
         start_time = time.time()
-        if 'CTC' in opt.Prediction:
+        if 'CTC' in opt.Prediction or 'Hangul' in opt.Prediction:
             preds = model(image, text_for_pred)
             forward_time = time.time() - start_time
 

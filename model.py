@@ -84,7 +84,7 @@ class Model(nn.Module):
             contextual_feature = visual_feature  # for convenience. this is NOT contextually modeled by BiLSTM
 
         """ Prediction stage """
-        if self.stages['Pred'] == 'CTC':
+        if self.stages['Pred'] == 'CTC' or self.stages['Pred'] == 'Hangul':
             prediction = self.Prediction(contextual_feature.contiguous())
         else:
             prediction = self.Prediction(contextual_feature.contiguous(), text, is_train, batch_max_length=self.opt.batch_max_length)

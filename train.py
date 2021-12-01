@@ -26,7 +26,7 @@ def train(opt):
         print('Filtering the images whose label is longer than opt.batch_max_length')
         # see https://github.com/clovaai/deep-text-recognition-benchmark/blob/6593928855fb7abb999a99f428b3e4477d4ae356/dataset.py#L130
 
-    train_dataset, _ = hierarchical_dataset_2(opt.train_data)
+    train_dataset = Batch_Balanced_Dataset_2(opt)
 
     log = open(f'./saved_models/{opt.exp_name}/log_dataset.txt', 'a')
 
@@ -88,7 +88,7 @@ def train(opt):
     print(model)
 
     """ setup loss """
-    if 'CTC' in opt.Prediction:
+    if 'CTC' in opt.Prediction or 'Hangul' in opt.Prediction:
         criterion = torch.nn.CTCLoss(zero_infinity=True).to(device)
     else:
         criterion = torch.nn.CrossEntropyLoss(ignore_index=0).to(device)  # ignore [GO] token = ignore index 0
@@ -143,7 +143,7 @@ def train(opt):
         text, length = converter.encode(labels, batch_max_length=opt.batch_max_length)
         batch_size = image.size(0)
 
-        if 'CTC' in opt.Prediction:
+        if 'CTC' in opt.Prediction or 'Hangul' in opt.Prediction:
             preds = model(image, text)
             preds_size = torch.IntTensor([preds.size(1)] * batch_size)
             if opt.baiduCTC:
@@ -232,7 +232,7 @@ if __name__ == '__main__':
     parser.add_argument('--valInterval', type=int, default=10, help='Interval between each validation')
     parser.add_argument('--saved_model', default='', help="path to model to continue training")
     parser.add_argument('--FT', action='store_true', help='whether to do fine-tuning')
-    parser.add_argument('--adam', action='store_true', help='Whether to use adam (default is Adadelta)')
+    parser.add_argument('--adam', action='store_true', help='Whether to use adam (default is Adadelta)', default=False)
     parser.add_argument('--lr', type=float, default=1, help='learning rate, default=1.0 for Adadelta')
     parser.add_argument('--beta1', type=float, default=0.9, help='beta1 for adam. default=0.9')
     parser.add_argument('--rho', type=float, default=0.95, help='decay rate rho for Adadelta. default=0.95')
